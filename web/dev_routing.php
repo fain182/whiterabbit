@@ -5,4 +5,4 @@ if (php_sapi_name() === 'cli-server' && is_file($filename)) {
     return false;
 }
 
-include "index.php";
+include __DIR__."/index.php";
