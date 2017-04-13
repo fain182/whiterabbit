@@ -68,7 +68,7 @@ EOT;
 
             $acc['details'] .= $msg;
             return $acc;
-        });
+        }, ['hours' => 0, 'details' => '']);
 
         $entry = [];
         $entry['title'] = $val['hours'];
