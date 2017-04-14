@@ -7,12 +7,12 @@ use Symfony\Component\HttpFoundation\Request;
 $app = new Silex\Application();
 $app['debug'] = true;
 
-$app->get('/time', function(Request $request) use($app) {
+$dotenv = new Dotenv\Dotenv(__DIR__ . "/..");
+$dotenv->load();
+$dotenv->required('REDMINE_API_KEY');
+$dotenv->required('REDMINE_URL');
 
-    $dotenv = new Dotenv\Dotenv(__DIR__ . "/..");
-    $dotenv->load();
-    $dotenv->required('REDMINE_API_KEY');
-    $dotenv->required('REDMINE_URL');
+$app->get('/time', function(Request $request) use($app) {
 
     $key =  getenv('REDMINE_API_KEY');
     $redmine_url = getenv('REDMINE_URL');
@@ -22,16 +22,16 @@ $app->get('/time', function(Request $request) use($app) {
     $user_id = $request->query->get('user') ?: 'me';
 
     $res = getDailySpentTime($redmine_url, $user_id, $start, $end, $key);
-    $results = createDailyAggregate($redmine_url, $res, $app['url_generator']);
+    $results = createDailyAggregate($redmine_url, $res);
 
     return $app->json($results);
 });
 
 $app->run();
 
-function getDailySpentTime($url, $user, $from, $to, $key) {
+function getDailySpentTime($redmine_url, $user, $from, $to, $key) {
 
-    $url = "$url/time_entries.json?key=$key&user_id=$user&from=$from&to=$to&limit=100";
+    $url = "$redmine_url/time_entries.json?key=$key&user_id=$user&from=$from&to=$to&limit=100";
 
     $times = json_decode(file_get_contents($url), true);
 
@@ -47,19 +47,19 @@ function getDailySpentTime($url, $user, $from, $to, $key) {
     return $res;
 }
 
-function createDailyAggregate($url, $spent_time, $url_generator) {
+function createDailyAggregate($redmine_url, $spent_time) {
 
     $results = [];
     foreach ($spent_time as $date => $day) {
-        $val = array_reduce($day, function($acc, $item) use ($url){
+        $val = array_reduce($day, function($acc, $item) use ($redmine_url){
             $acc['hours'] += $item['hours'];
 
 
             $msg = <<<EOT
 <br/>
-<a href="$url/issues/{$item['issue']['id']}/time_entries">{$item['hours']}h</a>
+<a href="$redmine_url/issues/{$item['issue']['id']}/time_entries">{$item['hours']}h</a>
 {$item['project']['name']}
-<a href="$url/issues/{$item['issue']['id']}">{$item['issue']['id']}</a><br/>
+<a href="$redmine_url/issues/{$item['issue']['id']}">{$item['issue']['id']}</a><br/>
 EOT;
 
             if ($item['comments']) {
