@@ -12,16 +12,16 @@ $dotenv->load();
 $dotenv->required('REDMINE_API_KEY');
 $dotenv->required('REDMINE_URL');
 
-$app->get('/time', function(Request $request) use($app) {
+$redmine_key =  getenv('REDMINE_API_KEY');
+$redmine_url = getenv('REDMINE_URL');
 
-    $key =  getenv('REDMINE_API_KEY');
-    $redmine_url = getenv('REDMINE_URL');
+$app->get('/time', function(Request $request) use($app, $redmine_url, $redmine_key) {
 
     $start = $request->query->get('start');
     $end = $request->query->get('end');
     $user_id = $request->query->get('user') ?: 'me';
 
-    $res = getDailySpentTime($redmine_url, $user_id, $start, $end, $key);
+    $res = getDailySpentTime($redmine_url, $user_id, $start, $end, $redmine_key);
     $results = createDailyAggregate($redmine_url, $res);
 
     return $app->json($results);
@@ -29,67 +29,72 @@ $app->get('/time', function(Request $request) use($app) {
 
 $app->run();
 
-function getDailySpentTime($redmine_url, $user, $from, $to, $key) {
+function getDailySpentTime($redmine_url, $user_id, $from, $to, $key) {
 
-    $url = "$redmine_url/time_entries.json?key=$key&user_id=$user&from=$from&to=$to&limit=100";
+    $url = "$redmine_url/time_entries.json?key=$key&user_id=$user_id&from=$from&to=$to&limit=100";
 
     $times = json_decode(file_get_contents($url), true);
 
-    $res = [];
+    $timeEntriesByDay = [];
     foreach ($times['time_entries'] as $time_entry) {
         if (!isset($time_entry['spent_on'])) {
-            $res[$time_entry['spent_on']] = [];
+            $timeEntriesByDay[$time_entry['spent_on']] = [];
         }
 
-        $res[$time_entry['spent_on']][] = $time_entry;
+        $timeEntriesByDay[$time_entry['spent_on']][] = $time_entry;
     }
 
-    return $res;
+    return $timeEntriesByDay;
 }
 
 function createDailyAggregate($redmine_url, $spent_time) {
 
     $results = [];
     foreach ($spent_time as $date => $day) {
-        $val = array_reduce($day, function($acc, $item) use ($redmine_url){
-            $acc['hours'] += $item['hours'];
-
-
-            $msg = <<<EOT
-<br/>
-<a href="$redmine_url/issues/{$item['issue']['id']}/time_entries">{$item['hours']}h</a>
-{$item['project']['name']}
-<a href="$redmine_url/issues/{$item['issue']['id']}">{$item['issue']['id']}</a><br/>
-EOT;
-
-            if ($item['comments']) {
-               $msg .= "<span class='small'>-{$item['comments']}</span><br/>";
-            }
-
-            $acc['details'] .= $msg;
-            return $acc;
-        }, ['hours' => 0, 'details' => '']);
+        $hours = array_reduce($day, "sumHours", 0);
 
         $entry = [];
-        $entry['title'] = $val['hours'];
+        $entry['title'] = $hours;
         $entry['start'] = $date;
         $entry['className'] = ['event'];
-        $entry['details'] = $val['details'];
-
-        if ($val['hours'] >= 6 ) {
-            $entry['className'][] = 'good';
-        }
-
-        if ($val['hours'] < 6 && $val['hours'] >= 4) {
-            $entry['className'][] = 'warning';
-        }
-
-        if ($val['hours'] < 4) {
-            $entry['className'][] = 'nogood';
-        }
+        $entry['details'] = array_reduce($day, "generateEntriesDescription", '');
+        $entry['className'][] = getClassNameByHour($hours);
 
         $results[] = $entry;
     }
 
     return $results;
+}
+
+function sumHours($totalHours, $timeEntry) {
+    return $totalHours + $timeEntry['hours'];
+}
+
+function generateEntriesDescription($description, $timeEntry) {
+    global $redmine_url;
+
+    $msg = <<<EOT
+<br/>
+<a href="$redmine_url/issues/{$timeEntry['issue']['id']}/time_entries">{$timeEntry['hours']}h</a>
+{$timeEntry['project']['name']}
+<a href="$redmine_url/issues/{$timeEntry['issue']['id']}">{$timeEntry['issue']['id']}</a><br/>
+EOT;
+
+    if ($timeEntry['comments']) {
+        $msg .= "<span class='small'>-{$timeEntry['comments']}</span><br/>";
+    }
+
+    return $description . $msg;
+}
+
+function getClassNameByHour($hours) {
+    if ($hours < 4) {
+        return 'nogood';
+    }
+
+    if ($hours < 6) {
+        return 'warning';
+    }
+
+    return 'good';
 }
