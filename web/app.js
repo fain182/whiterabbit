@@ -29,7 +29,7 @@ $(document).ready(function() {
                 return {
                     user: $("#timesheet_users" ).val()
                 }
-            },
+            }
         },
         eventClick: function(data, event, view) {
             tooltip.set({
@@ -46,10 +46,14 @@ $(document).ready(function() {
     $('#timesheet_users').change(function(e){
         var optionSelected = $(this).find("option:selected");
         var textSelected   = optionSelected.text();
-
+        localStorage.setItem('whiterabbit_user_id', optionSelected.val());
         $('#calendar').fullCalendar('refetchEvents');
 
         $('.showmsg').text("Showing time for " + textSelected);
     });
 
+    if (localStorage.getItem('whiterabbit_user_id')) {
+        $("#timesheet_users" ).val(localStorage.getItem('whiterabbit_user_id'));
+        $("#timesheet_users" ).trigger("change");
+    }
 });
